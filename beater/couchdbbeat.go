@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/beat"
+	"github.com/elastic/beats/libbeat/cfgfile"
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/logp"
 
@@ -13,59 +14,95 @@ import (
 
 // Couchdbbeat configuration.
 type Couchdbbeat struct {
-	done   chan struct{}
-	config config.Config
-	client beat.Client
+	done     chan struct{}
+	config   config.CouchdbbeatConfig
+	client   beat.Client
+	CbConfig config.ConfigSettings
+	period   time.Duration
+	port     string
+	host     string
 }
+
+const selector = "couchdbbeat"
 
 // New creates an instance of couchdbbeat.
 func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
-	c := config.DefaultConfig
-	if err := cfg.Unpack(&c); err != nil {
-		return nil, fmt.Errorf("Error reading config file: %v", err)
+	cb := &Couchdbbeat{
+		done: make(chan struct{}),
 	}
-
-	bt := &Couchdbbeat{
-		done:   make(chan struct{}),
-		config: c,
+	err := cfgfile.Read(&cb.CbConfig, "")
+	if err != nil {
+		logp.Err("Error reading configuration file: %v", err)
+		return nil, fmt.Errorf("Error reading configuration file: %v", err)
 	}
-	return bt, nil
+	return cb, nil
 }
 
 // Run starts couchdbbeat.
-func (bt *Couchdbbeat) Run(b *beat.Beat) error {
+func (cb *Couchdbbeat) Run(b *beat.Beat) error {
 	logp.Info("couchdbbeat is running! Hit CTRL-C to stop it.")
+	cb.CheckConfig(b)
 
 	var err error
-	bt.client, err = b.Publisher.Connect()
+	cb.client, err = b.Publisher.Connect()
 	if err != nil {
 		return err
 	}
 
-	ticker := time.NewTicker(bt.config.Period)
-	counter := 1
+	ticker := time.NewTicker(cb.period)
 	for {
 		select {
-		case <-bt.done:
+		case <-cb.done:
 			return nil
 		case <-ticker.C:
+		}
+		serverstats, err := cb.getServerStats(b)
+		if err != nil {
+			logp.Debug(selector, "Error reading server stats")
+			return err
 		}
 
 		event := beat.Event{
 			Timestamp: time.Now(),
 			Fields: common.MapStr{
-				"type":    b.Info.Name,
-				"counter": counter,
+				"type":   b.Info.Name,
+				"server": serverstats,
 			},
 		}
-		bt.client.Publish(event)
+		cb.client.Publish(event)
 		logp.Info("Event sent")
-		counter++
 	}
 }
 
+func (cb *Couchdbbeat) CheckConfig(b *beat.Beat) error {
+	if cb.CbConfig.Input.Period != nil {
+		cb.period = time.Duration(*cb.CbConfig.Input.Period) * time.Second
+	} else {
+		cb.period = 30 * time.Second
+	}
+
+	if cb.CbConfig.Input.Port != nil {
+		cb.port = *cb.CbConfig.Input.Port
+	} else {
+		cb.port = "5984"
+	}
+
+	if cb.CbConfig.Input.Host != nil {
+		cb.host = *cb.CbConfig.Input.Host
+	} else {
+		cb.port = "localhost"
+	}
+
+	logp.Debug(selector, "Init Couchdbbeat")
+	logp.Debug(selector, "Port %v", cb.port)
+	logp.Debug(selector, "Period %v", cb.period)
+	logp.Debug(selector, "Host %v", cb.host)
+
+	return nil
+}
+
 // Stop stops couchdbbeat.
-func (bt *Couchdbbeat) Stop() {
-	bt.client.Close()
-	close(bt.done)
+func (cb *Couchdbbeat) Stop() {
+	cb.client.Close()
+	close(cb.done)
 }

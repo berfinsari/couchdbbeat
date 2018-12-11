@@ -2,9 +2,18 @@
 
 ############################# Couchdbbeat ######################################
 
-couchdbbeat:
+input:
   # Defines how often an event is sent to the output
-  period: 1s
+  period: 30
+
+  # Defines the http port serviced
+  # Default to :5984
+  port: :5984
+
+  # Defines the http host serviced
+  # Default to localhost
+  host: localhost
+
 
 #================================ General ======================================
 
