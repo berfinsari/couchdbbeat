@@ -1,0 +1,5 @@
+= Couchdbbeat Docs
+
+Welcome to the Couchdbbeat documentation.
+
+

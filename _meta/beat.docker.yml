@@ -1,0 +1,2 @@
+couchdbbeat:
+  period: 1s

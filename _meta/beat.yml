@@ -1,0 +1,7 @@
+################### Couchdbbeat Configuration Example #########################
+
+############################# Couchdbbeat ######################################
+
+couchdbbeat:
+  # Defines how often an event is sent to the output
+  period: 1s
